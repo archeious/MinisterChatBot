@@ -1,8 +1,7 @@
 require 'socket'
 require 'logger'
 
-Thread.abort_on_exception = true
-
+module Minister
 class Twitch
   attr_reader :logger, :running, :socket
 
@@ -35,7 +34,7 @@ class Twitch
 
         ready[0].each do |s|
           line = s.gets.chomp
-          @logger.info line 
+          @logger.info "> #{line}" 
 
           match = line.match(/:(.+)!.+PRIVMSG #(.+) :(.+)$/)
           message = match && match[3]
@@ -54,21 +53,7 @@ class Twitch
     @socket.close
     @running = false
   end
-
+end
 end
 
 
-bot = Twitch.new
-bot.run
-
-while (bot.running) do
-  command = gets.chomp
-
-  if command == 'quit'
-    bot.stop
-  else
-    bot.send(command)
-  end
-end
-
-bot.logger.info "Quitting."
