@@ -18,7 +18,11 @@ module Minister
       end
 
       def join(channel)
-        sendRaw("JOIN #{channel}")
+        raise NotImplementedError.new('Subclasses must implement nbehavior.')
+      end
+
+      def part(channel)
+        raise NotImplementedError.new('Subclasses must implement nbehavior.')
       end
 
       private

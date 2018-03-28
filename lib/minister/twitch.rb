@@ -24,6 +24,14 @@ class Twitch < Server
     sendRaw("PRIVMSG ##{channel} :#{message}")
   end
 
+  def join(channel)
+    sendRaw("JOIN ##{channel}")
+  end
+
+  def part(channel)
+    sendRaw("PART ##{channel}")
+  end  
+
   def run
     @running = true
     ready = IO.select([@socket])
@@ -54,6 +62,8 @@ class Twitch < Server
   
   def stop
     @logger.info "Closing  twitch bot"
+    part(ENV['TWITCH_CHAT_CHANNEL'])
+    sendRaw("QUIT")
     @socket.close
     @running = false
   end
@@ -62,7 +72,6 @@ class Twitch < Server
 
   def login
     username = Minister.config.settings['twitch']['username']
-    
     
     @logger.info "Perparing to connect to Twitch Chat Server (#{ENV['TWITCH_CHAT_SERVER']}) as #{username} ..."
     #sendRaw("PASS #{ENV['TWITCH_CHAT_TOKEN']}")

@@ -11,6 +11,8 @@ srv  = Minister::Twitch.new
 srv.start
 srv.join(ENV['TWITCH_CHAT_CHANNEL'])
 
+
+
 while (srv.running) do
   command = gets.chomp
 
