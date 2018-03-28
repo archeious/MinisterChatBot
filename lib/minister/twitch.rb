@@ -32,6 +32,11 @@ class Twitch < Server
       line = s.gets.chomp
       @logger.info "> #{line}" 
 
+      if line.match(/^PING :(.*)$/)
+        sendRaw "PONG #{$~[1]}"
+        next
+      end
+      
       match = line.match(/:(.+)!.+PRIVMSG #(.+) :(.+)$/)
       message = match && match[3]
 
