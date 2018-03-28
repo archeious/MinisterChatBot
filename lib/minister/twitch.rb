@@ -2,17 +2,21 @@ require 'socket'
 require 'logger'
 
 module Minister
-class Twitch
-  attr_reader :logger, :running, :socket
+class Twitch < Server 
+  attr_reader :socket
 
-  def initialize(logger = nil)
-    @logger = logger || Logger.new(STDOUT)
-    @running = false
+  def initialize(*args)
+    super
     @socket = nil
   end
   
   def sendRaw(message)
-    @logger.info "< #{message}"
+    # Do not log passwords
+    if message =~ /^PASS/
+      @logger.info "< PASS XXXXXXXXXXXXXX"
+    else
+      @logger.info "< #{message}"
+    end
     @socket.puts(message)
   end
 
@@ -21,38 +25,42 @@ class Twitch
   end
 
   def run
-    @logger.info "Perparing to connect to #{ENV['TWITCH_CHAT_SERVER']}..."
-    @socket = TCPSocket.new("#{ENV['TWITCH_CHAT_SERVER']}", ENV['TWITCH_CHAT_SERVER_PORT'])
     @running = true
-    sendRaw("PASS #{ENV['TWITCH_CHAT_TOKEN']}")
-    sendRaw("NICK #{ENV['TWITCH_CHAT_USER']}")
-    sendRaw("JOIN #{ENV['TWITCH_CHAT_CHANNEL']}")
-    @logger.info 'Connected...'
-    Thread.start do
-      while  (running) do
-        ready = IO.select([@socket])
+    ready = IO.select([@socket])
 
-        ready[0].each do |s|
-          line = s.gets.chomp
-          @logger.info "> #{line}" 
+    ready[0].each do |s|
+      line = s.gets.chomp
+      @logger.info "> #{line}" 
 
-          match = line.match(/:(.+)!.+PRIVMSG #(.+) :(.+)$/)
-          message = match && match[3]
+      match = line.match(/:(.+)!.+PRIVMSG #(.+) :(.+)$/)
+      message = match && match[3]
 
-          if message =~ /^!hello$/
-            sendMsg("Greetings and Salutations #{match[1]}, you are a big meat sack!!", match[2])
-          end        
- 
-        end
-      end
+      if message =~ /^!hello$/
+        sendMsg("Greetings and Salutations #{match[1]}, you are a big meat sack!!", match[2])
+      end        
     end
   end
 
+  def initialize_server
+    @logger.info "Perparing to connect to #{ENV['TWITCH_CHAT_SERVER']}..."
+    @socket = TCPSocket.new("#{ENV['TWITCH_CHAT_SERVER']}", ENV['TWITCH_CHAT_SERVER_PORT'])
+    login
+    @logger.info 'Connected...'
+  end
+  
   def stop
     @logger.info "Closing  twitch bot"
     @socket.close
     @running = false
   end
+
+  private
+
+  def login
+    sendRaw("PASS #{ENV['TWITCH_CHAT_TOKEN']}")
+    sendRaw("NICK #{ENV['TWITCH_CHAT_USER']}")
+  end
+
 end
 end
 

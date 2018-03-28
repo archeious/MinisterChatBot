@@ -7,16 +7,17 @@ require 'minister'
 Thread.abort_on_exception = true
 
 
-bot = Minister::Twitch.new
-bot.run
+srv  = Minister::Twitch.new
+srv.start
+srv.join(ENV['TWITCH_CHAT_CHANNEL'])
 
-while (bot.running) do
+while (srv.running) do
   command = gets.chomp
 
   if command == 'quit'
-    bot.stop
+    srv.stop
   else
-    bot.sendRaw(command)
+    srv.sendRaw(command)
   end
 end
 
