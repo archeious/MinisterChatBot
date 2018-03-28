@@ -42,7 +42,6 @@ class Twitch < Server
   end
 
   def initialize_server
-    @logger.info "Perparing to connect to #{ENV['TWITCH_CHAT_SERVER']}..."
     @socket = TCPSocket.new("#{ENV['TWITCH_CHAT_SERVER']}", ENV['TWITCH_CHAT_SERVER_PORT'])
     login
     @logger.info 'Connected...'
@@ -57,8 +56,13 @@ class Twitch < Server
   private
 
   def login
-    sendRaw("PASS #{ENV['TWITCH_CHAT_TOKEN']}")
-    sendRaw("NICK #{ENV['TWITCH_CHAT_USER']}")
+    username = Minister.config.settings['twitch']['username']
+    
+    
+    @logger.info "Perparing to connect to Twitch Chat Server (#{ENV['TWITCH_CHAT_SERVER']}) as #{username} ..."
+    #sendRaw("PASS #{ENV['TWITCH_CHAT_TOKEN']}")
+    sendRaw("PASS #{Minister.config.settings['twitch']['token']}")
+    sendRaw("NICK #{username}") 
   end
 
 end

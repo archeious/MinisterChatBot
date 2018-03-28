@@ -1,0 +1,3 @@
+twitch:
+  username: username 
+  token: DONT_USE_THIS_USE_THE_ENV 
