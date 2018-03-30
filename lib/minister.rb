@@ -8,7 +8,6 @@ module Minister
   end
 end
 
-require 'minister/server'
 require 'minister/configuration'
 require 'minister/twitch'
 
