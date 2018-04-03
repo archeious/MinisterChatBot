@@ -1,0 +1,124 @@
+require 'socket'
+
+  class Twitch  
+    attr_reader :socket, :running
+
+    def initialize()
+      @running      = false
+      @socket       = nil
+    end
+
+    def initialize_server
+      @socket = TCPSocket.new("#{ENV['TWITCH_CHAT_SERVER']}", ENV['TWITCH_CHAT_SERVER_PORT'])
+      login
+      puts 'Connected...'
+    end
+
+    def parse_irc_tags(tags)      
+      return tags.split(';')
+    end
+
+    def parse_raw_irc(input)
+      resp = {}
+      
+      # If it is a PING command immediately bail out
+      if input.match(/^PING :(.*)$/)
+        resp[:command] = "PING"
+        resp[:response] = $~[1]
+        return resp
+      end
+
+      # Parse IRC tags if there are any and then strip them off the input line
+      if input.match(/^@(.*?) (.*)/)
+        resp[:tags] = parse_irc_tags($~[1])
+        input = $~[2]
+      end
+      
+      # Generic IRC input
+      # :tmi.twitch.tv 001 botofarch :Welcome, GLHF!
+      if input.match(/^:(.*)?tmi.twitch.tv (.+?) (.*)?$/)
+        resp[:command] = $~[2]
+        resp[:message] = $~[3]
+        return resp
+      end
+      
+      resp[:command] = "UNKNOWN #{input}"
+      return resp
+    end
+
+    def run
+      @running = true
+      ready = IO.select([@socket])
+
+      ready[0].each do |s|
+        line = s.gets.chomp
+        puts "> #{line}" 
+
+        #Process Twitch Commands
+        
+        #Keep the connect alive via ping/pong https://dev.twitch.tv/docs/irc/#connecting-to-twitch-irc
+        if line.match(/^PING :(.*)$/)
+          sendRaw "PONG #{$~[1]}"
+          next
+        end
+      end
+      STDOUT.flush
+    end
+
+    def start 
+      puts "Initializing channel #{self.inspect}..."
+      @running =true
+      initialize_server
+      Thread.start do
+        while (running) do
+          run  
+        end
+      end
+    end
+
+    def stop
+      part(ENV['TWITCH_CHAT_CHANNEL'])
+      sendRaw("QUIT")
+      @socket.close
+      @running = false
+    end
+    
+    def sendRaw(message)
+      # Do not log passwords
+      if message =~ /^PASS/
+        puts "< PASS XXXXXXXXXXXXXX"
+      else
+        puts "< #{message}"
+      end
+      @socket.puts(message)
+    end
+
+    def sendMsg(message, channel)
+      sendRaw("PRIVMSG ##{channel} :#{message}")
+    end
+
+    def join(channel)
+      sendRaw("JOIN ##{channel}")
+    end
+
+    def part(channel)
+      sendRaw("PART ##{channel}")
+    end  
+
+
+    private
+
+    def login
+      username = "botofarch" 
+      
+      puts "Perparing to connect to Twitch Chat Server (#{ENV['TWITCH_CHAT_SERVER']}) as #{username} ..."
+      #sendRaw("PASS #{ENV['TWITCH_CHAT_TOKEN']}")
+      sendRaw("PASS #{ENV['TWITCH_CHAT_TOKEN']}")
+      sendRaw("NICK #{username}")
+      sendRaw("CAP REQ :twitch.tv/tags") 
+      sendRaw("CAP REQ :twitch.tv/commands")
+    end
+
+end
+
+

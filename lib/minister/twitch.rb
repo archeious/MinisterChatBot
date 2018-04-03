@@ -8,12 +8,13 @@ module Minister
     attr_reader :socket, :logger, :running
 
     def initialize(logger = nil)
-      #file = File.open(STDOUT)
-      @logger       = logger || Logger.new('irc.log')
+      #@logger       = logger || Logger.new('irc.log')
+      @logger       = logger || Logger.new(STDOUT)
       @running      = false
       @socket       = nil
       @command_list = []
       @google_session = GoogleDrive::Session.from_config("config/config.json")
+      @twitch_caps  = []
     end
 
     def initialize_server
@@ -22,16 +23,39 @@ module Minister
       @logger.info 'Connected...'
     end
 
-    def parse_input(str) 
-        info = str.match(/:(?<user>.+)!.+PRIVMSG #(?<chan>.+) :(?<msg>.+)$/)
-        info
+    def parse_raw_irc(str)
+      resp = {} 
+      
+      if str.match(/^:tmi.twitch.tv (.*)$/)
+        resp["type"] = "SRVMSG"
+        resp["msg"] = $~[1]
+        return resp
+      end
+
+      if str.match(/^:botofarch.tmi.twitch.tv (.*)$/)
+        resp["type"] = "USRMSG"
+        resp["msg"] = $~[1]
+        return resp
+      end
+     
+      info = str.match(/:(?<user>.+)!.+ (?<cmd>.+) #(?<chan>.+) :(?<msg>.+)$/)
+      resp["type"] = "BASIC"
+      resp["cmd"]  = info && info["cmd"]
+      resp["user"] = info && info["user"]
+      resp["chan"] = info && info["chan"]
+      resp["msg"]  = info && info["msg"]
+      
+#      if @twitch_caps.include? 'tags'
+#        preamble = str.match(/^(.*?):/)
+#        puts preamble
+#      end  
+      resp
     end
 
     def topGamesCommand(sheet_id, channel)
       # ws = @google_session.spreadsheet_by_key("1xZ0LVo8Hxx3cnBzbjMG_pCai9lmeWP8RhDsK4WrTF8Q").worksheets[0]
       ws = @google_session.spreadsheet_by_key(sheet_id).worksheets[0]
       count = Minister.config.settings['command']['topgames']['count']
-      logger.debug "Worksheet is #{count} rows in length"
       if ws.kind_of?(Array) && ws.length < count
         count = ws.length
       end
@@ -45,9 +69,6 @@ module Minister
       sendMsg("#{msg}", channel)
       ws[1, 1] = "1"
       ws.save
-      #ws.rows.each { |row|
-      #  p row[1] + " (" + row[5] +")" if row[5].to_i > 0
-      #}
     end
     
     def run
@@ -58,28 +79,47 @@ module Minister
         line = s.gets.chomp
         @logger.info "> #{line}" 
 
+        #Process Twitch Commands
+        
+        #Keep the connect alive via ping/pong https://dev.twitch.tv/docs/irc/#connecting-to-twitch-irc
         if line.match(/^PING :(.*)$/)
           sendRaw "PONG #{$~[1]}"
           next
         end
-        
-        info = parse_input(line)
+
+        if line.match(/^:tmi.twitch.tv CAP \* ACK :twitch.tv\/(\w+)$/)
+          acked_cap = $~[1]
+          if @twitch_caps.include? acked_cap
+            @logger.error "ERR: Twitch Capability #{acked_cap} with already acknowledged"
+            next
+          else  
+            @twitch_caps << acked_cap
+            next
+          end
+        end
+
+        info = parse_raw_irc(line)
 
         msg  = info && info["msg"]
         user = info && info["user"]
         chan = info && info["chan"]
 
-        if msg && msg.match(/^!/)
-          cmd = msg.match(/^!([\w]+)/)[0]
-          logger.debug "COMMAND: #{cmd}"
-          case cmd
-          when '!hello'
-            sendMsg("Greetings and Salutations #{user}, you are a big meat sack!!", chan)
-          when '!top'
-            topGamesCommand(Minister.config.settings['command']['topgames']['worksheet'], chan)
+        if info["type"] == "BASIC" and info["cmd"] == "PRIVMSG"
+          if msg && msg.match(/^!/)
+            cmd = msg.match(/^!([\w]+)/)[0]
+            case cmd
+            when '!hello'
+              sendMsg("Greetings and Salutations #{user}, you are a big meat sack!!", chan)
+            when '!top'
+              topGamesCommand(Minister.config.settings['command']['topgames']['worksheet'], chan)
+            else
+              #sendMsg("Unknown Command \"#{cmd}\"",chan)
+            end
           else
-            sendMsg("Unknown Command \"#{cmd}\"",chan)
+            puts "#{info["cmd"]} - #{info["user"]} : #{info["msg"]}" 
           end
+        else
+          puts "#{info["cmd"]} - #{info["user"]} : #{info["msg"]}"  
         end 
       end
     end
