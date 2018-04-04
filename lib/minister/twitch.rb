@@ -1,6 +1,7 @@
 require 'socket'
 require 'logger'
 require "google_drive"
+require 'time'
 
 module Minister
 
@@ -8,8 +9,8 @@ module Minister
     attr_reader :socket, :logger, :running
 
     def initialize(logger = nil)
-      #@logger       = logger || Logger.new('irc.log')
-      @logger       = logger || Logger.new(STDOUT)
+      @logger       = logger || Logger.new('irc.log')
+      #@logger       = logger || Logger.new(STDOUT)
       @running      = false
       @socket       = nil
       @command_list = []
@@ -23,33 +24,45 @@ module Minister
       @logger.info 'Connected...'
     end
 
-    def parse_raw_irc(str)
-      resp = {} 
-      
-      if str.match(/^:tmi.twitch.tv (.*)$/)
-        resp["type"] = "SRVMSG"
-        resp["msg"] = $~[1]
+    def parse_irc_tags(tags)      
+      return tags.split(';')
+    end
+
+    def parse_irc_raw(input)
+      resp = {}
+
+      # If it is a PING command immediately bail out
+      if input.match(/^PING :(.*)$/)
+        resp[:command] = "PING"
+        resp[:response] = $~[1]
         return resp
       end
 
-      if str.match(/^:botofarch.tmi.twitch.tv (.*)$/)
-        resp["type"] = "USRMSG"
-        resp["msg"] = $~[1]
+      # Parse IRC tags if there are any and then strip them off the input line
+      if input.match(/^@(.*?) (.*)/)
+        resp[:tags] = parse_irc_tags($~[1])
+        input = $~[2]
+      end
+      
+      # Generic IRC input
+      # :tmi.twitch.tv 001 botofarch :Welcome, GLHF!
+      if input.match(/^:(.*)?tmi.twitch.tv (.+?) (.*)?$/)
+        resp[:pre]     = $~[1]
+        resp[:command] = $~[2]
+        resp[:message] = $~[3]
+        case resp[:command]
+        when "PRIVMSG"
+          resp[:user] = $~[1] if resp[:pre].length > 0 and resp[:pre].match(/^(.*)!.*$/)
+          if resp[:message].length > 0 and resp[:message].match(/^#(.*)? :(.*)$/)
+            resp[:channel] = $~[1] 
+            resp[:message] = $~[2] 
+          end
+        end
         return resp
       end
-     
-      info = str.match(/:(?<user>.+)!.+ (?<cmd>.+) #(?<chan>.+) :(?<msg>.+)$/)
-      resp["type"] = "BASIC"
-      resp["cmd"]  = info && info["cmd"]
-      resp["user"] = info && info["user"]
-      resp["chan"] = info && info["chan"]
-      resp["msg"]  = info && info["msg"]
       
-#      if @twitch_caps.include? 'tags'
-#        preamble = str.match(/^(.*?):/)
-#        puts preamble
-#      end  
-      resp
+      resp[:command] = "UNKNOWN #{input}"
+      return resp
     end
 
     def topGamesCommand(sheet_id, channel)
@@ -69,6 +82,24 @@ module Minister
       sendMsg("#{msg}", channel)
       ws[1, 1] = "1"
       ws.save
+    end
+
+    def processBitDonation(user, amount, game = nil)
+      ws = @google_session.spreadsheet_by_key('1AMsnO3PLJoVZesrA1L64fM4I9_olUdvntf3c53snMts').worksheets[1]
+      nextRow = 1
+      if ws.rows.kind_of?(Array) 
+        nextRow = ws.rows.length + 1
+      end
+
+      puts "#{nextRow} update votes for #{game} by #{user} with #{amount} votes"
+      ws[nextRow, 1] = Time.now.utc.iso8601
+      ws[nextRow, 2] = user
+      ws[nextRow, 3] = amount
+      if game 
+        ws[nextRow, 4] = game
+      end
+      ws.save
+      ws.reload
     end
     
     def run
@@ -98,28 +129,39 @@ module Minister
           end
         end
 
-        info = parse_raw_irc(line)
+        resp = parse_irc_raw(line)
 
-        msg  = info && info["msg"]
-        user = info && info["user"]
-        chan = info && info["chan"]
-
-        if info["type"] == "BASIC" and info["cmd"] == "PRIVMSG"
-          if msg && msg.match(/^!/)
-            cmd = msg.match(/^!([\w]+)/)[0]
+        case resp[:command]
+        when 'PRIVMSG'
+          resp[:tags].each { |tag|
+            if tag.match(/bits=(.+)/)
+              amount = $~[1]
+              puts "BIT DONATION OF #{amount} TRIGGER ACTION"
+              processBitDonation(resp[:user], amount, "GAME")
+            end 
+          } if resp.has_key? :tags
+          puts "#{resp[:user]} : #{resp[:message]}"
+          if resp[:message].match(/^!(.+)?\b.*/)
+            cmd = $~[1]
+            #cmd = msg.match(/^!([\w]+)/)[0]
             case cmd
-            when '!hello'
-              sendMsg("Greetings and Salutations #{user}, you are a big meat sack!!", chan)
-            when '!top'
-              topGamesCommand(Minister.config.settings['command']['topgames']['worksheet'], chan)
-            else
-              #sendMsg("Unknown Command \"#{cmd}\"",chan)
+            when 'hello'
+              sendMsg("Greetings and Salutations #{resp[:user]}, you are a big meat sack!!", resp[:channel])
+            when 'top'
+              topGamesCommand(Minister.config.settings['command']['topgames']['worksheet'], resp[:channel])
             end
-          else
-            puts "#{info["cmd"]} - #{info["user"]} : #{info["msg"]}" 
           end
-        else
-          puts "#{info["cmd"]} - #{info["user"]} : #{info["msg"]}"  
+        when 'USERNOTICE'
+          puts "USERNOTICE"
+          resp[:tags].each { |tag|
+            puts tag
+            if tag.match(/msg-id=(.+)/)
+             puts "msg-id=#{$~[1]}"
+             if ["sub","resub","giftsub"].include? $~[1]
+               puts "---SUBSCRIPTION---"
+             end
+            end
+          } if resp.has_key? :tags         
         end 
       end
     end
@@ -154,7 +196,8 @@ module Minister
     end
 
     def sendMsg(message, channel)
-      sendRaw("PRIVMSG ##{channel} :#{message}")
+      #sendRaw("PRIVMSG ##{channel} :#{message}")
+      sendRaw("PRIVMSG #archeious :#{message}")
     end
 
     def join(channel)
