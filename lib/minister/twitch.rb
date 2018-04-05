@@ -2,6 +2,7 @@ require 'socket'
 require 'logger'
 require "google_drive"
 require 'time'
+require 'minister/operation/voting'
 
 module Minister
 
@@ -9,13 +10,13 @@ module Minister
     attr_reader :socket, :logger, :running
 
     def initialize(logger = nil)
-      @logger       = logger || Logger.new('irc.log')
-      #@logger       = logger || Logger.new(STDOUT)
+      #@logger       = logger || Logger.new('irc.log')
+      @logger       = logger || Logger.new(STDOUT)
       @running      = false
       @socket       = nil
       @command_list = []
-      @google_session = GoogleDrive::Session.from_config("config/config.json")
       @twitch_caps  = []
+      @voting = Voting.new('1AMsnO3PLJoVZesrA1L64fM4I9_olUdvntf3c53snMts')
     end
 
     def initialize_server
@@ -135,9 +136,9 @@ module Minister
         when 'PRIVMSG'
           resp[:tags].each { |tag|
             if tag.match(/bits=(.+)/)
-              amount = $~[1]
+              amount = $~[1].to_f
               puts "BIT DONATION OF #{amount} TRIGGER ACTION"
-              processBitDonation(resp[:user], amount, "GAME")
+              @voting.processBitDonation(resp[:user], amount, resp[:message])
             end 
           } if resp.has_key? :tags
           puts "#{resp[:user]} : #{resp[:message]}"
