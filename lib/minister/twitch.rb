@@ -16,7 +16,7 @@ module Minister
       @socket       = nil
       @command_list = []
       @twitch_caps  = []
-      @voting = Voting.new('1AMsnO3PLJoVZesrA1L64fM4I9_olUdvntf3c53snMts')
+      @voting = Voting.new('1AMsnO3PLJoVZesrA1L64fM4I9_olUdvntf3c53snMts', Minister.config.settings)
     end
 
     def initialize_server
@@ -134,6 +134,7 @@ module Minister
 
         case resp[:command]
         when 'PRIVMSG'
+          puts "#{resp[:user]} : #{resp[:message]}"
           resp[:tags].each { |tag|
             if tag.match(/bits=(.+)/)
               amount = $~[1].to_f
@@ -141,11 +142,14 @@ module Minister
               @voting.processBitDonation(resp[:user], amount, resp[:message])
             end 
           } if resp.has_key? :tags
-          puts "#{resp[:user]} : #{resp[:message]}"
           if resp[:message].match(/^!(.+)?\b.*/)
             cmd = $~[1]
             #cmd = msg.match(/^!([\w]+)/)[0]
             case cmd
+            when 'checkBit'
+              if Minister.config.settings['debug']
+                @voting.processBitDonation('TEST USER', 100, 'This is a bit donation #variety 1')
+              end
             when 'hello'
               sendMsg("Greetings and Salutations #{resp[:user]}, you are a big meat sack!!", resp[:channel])
             when 'top'
